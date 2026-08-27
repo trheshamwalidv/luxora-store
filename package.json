@@ -103,7 +103,7 @@
   },
   "scripts": {
     "build": "vite build \u0026\u0026 esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
-    "build:vercel": "vite build",
+    "build:vercel": "node scripts/build-vercel-api.mjs && vite build",
     "check": "tsc --noEmit",
     "db:push": "drizzle-kit generate \u0026\u0026 drizzle-kit migrate",
     "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
