@@ -9,6 +9,7 @@ import {
   createCatalogProduct,
   deleteCatalogEntity,
   deleteCatalogProduct,
+  importShopifyCatalog,
   replaceCatalogImages,
   replaceCatalogVariants,
   saveCatalogCampaign,
@@ -35,6 +36,7 @@ const productInput = z.object({
 
 const variantInput = z.object({
   id: z.string().min(1),
+  shopifyVariantId: z.string().min(1).max(180).nullable().optional(),
   sku: z.string().min(3).max(96),
   colorName: z.string().min(2).max(72),
   colorHex: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
@@ -61,6 +63,7 @@ export const appRouter = router({
     snapshot: publicProcedure.query(() => getStorefrontSnapshot()),
     adminOverview: adminProcedure.query(() => getAdminOverview()),
     bootstrapDefaults: adminProcedure.mutation(() => bootstrapCatalogDefaults()),
+    importShopifyCatalog: adminProcedure.mutation(() => importShopifyCatalog()),
     saveSettings: adminProcedure.input(z.object({
       brandName: z.string().min(2).max(80).optional(),
       wordmark: z.string().min(1).max(18).optional(),

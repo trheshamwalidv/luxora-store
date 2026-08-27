@@ -63,6 +63,7 @@ export const collections = mysqlTable("collections", {
 export const products = mysqlTable("products", {
   id: int("id").autoincrement().primaryKey(),
   collectionId: int("collection_id"),
+  shopifyProductId: varchar("shopify_product_id", { length: 180 }).unique(),
   slug: varchar("slug", { length: 160 }).notNull().unique(),
   name: varchar("name", { length: 160 }).notNull(),
   subtitle: varchar("subtitle", { length: 180 }),
@@ -86,6 +87,7 @@ export const products = mysqlTable("products", {
 export const productVariants = mysqlTable("product_variants", {
   id: int("id").autoincrement().primaryKey(),
   productId: int("product_id").notNull(),
+  shopifyVariantId: varchar("shopify_variant_id", { length: 180 }).unique(),
   sku: varchar("sku", { length: 96 }).notNull().unique(),
   colorName: varchar("color_name", { length: 72 }).notNull(),
   colorHex: varchar("color_hex", { length: 16 }).notNull(),

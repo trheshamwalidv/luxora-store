@@ -210,19 +210,23 @@ export async function getPublishedProducts(): Promise<StorefrontProduct[]> {
     badge: row.badge,
     material: row.material,
     isFeatured: row.isFeatured,
+    source: row.shopifyProductId ? "shopify" : "local",
+    shopifyProductId: row.shopifyProductId,
     images: images.filter(image => image.productId === row.id).map(image => ({ id: String(image.id), url: image.imageUrl, alt: image.altText })),
     variants: variants.filter(variant => variant.productId === row.id).map(variant => ({
-      id: String(variant.id), sku: variant.sku, colorName: variant.colorName, colorHex: variant.colorHex,
+      id: variant.shopifyVariantId ?? String(variant.id), shopifyVariantId: variant.shopifyVariantId, sku: variant.sku, colorName: variant.colorName, colorHex: variant.colorHex,
       size: variant.size, stockQuantity: variant.stockQuantity, isAvailable: variant.isAvailable,
     })),
   }));
 }
 
 export async function getStorefrontSnapshot() {
-  const [settings, collectionList, productList, campaignList] = await Promise.all([
+  const db = await getDb();
+  const [settings, collectionList, productList, campaignList, managedRows] = await Promise.all([
     getStorefrontSettings(), getPublishedCollections(), getPublishedProducts(), getPublishedCampaigns(),
+    db ? db.select({ id: products.id }).from(products).limit(1) : Promise.resolve([]),
   ]);
-  return { settings, collections: collectionList, products: productList, campaigns: campaignList };
+  return { settings, collections: collectionList, products: productList, campaigns: campaignList, catalogSource: managedRows.length ? "managed" : "fallback" as const };
 }
 
 export async function getAdminOverview() {

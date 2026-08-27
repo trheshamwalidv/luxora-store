@@ -44,5 +44,6 @@ describe("LUXORA catalog defaults", () => {
       res: {} as never,
     });
     await expect(caller.catalog.adminOverview()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.catalog.importShopifyCatalog()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

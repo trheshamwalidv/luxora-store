@@ -1,5 +1,6 @@
 export type StorefrontVariant = {
   id: string;
+  shopifyVariantId?: string | null;
   sku: string;
   colorName: string;
   colorHex: string;
@@ -10,6 +11,7 @@ export type StorefrontVariant = {
 
 export type StorefrontProduct = {
   id: string;
+  shopifyProductId?: string | null;
   collectionId?: string;
   slug: string;
   name: string;
@@ -22,6 +24,7 @@ export type StorefrontProduct = {
   badge?: string | null;
   material?: string | null;
   isFeatured: boolean;
+  source?: "local" | "shopify";
   images: { id: string; url: string; alt: string }[];
   variants: StorefrontVariant[];
 };

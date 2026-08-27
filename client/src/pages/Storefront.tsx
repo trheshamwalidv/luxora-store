@@ -24,6 +24,7 @@ import { useCart } from "@/contexts/CartContext";
 
 type Variant = {
   id: string;
+  shopifyVariantId?: string | null;
   sku: string;
   colorName: string;
   colorHex: string;
@@ -34,6 +35,7 @@ type Variant = {
 
 type Product = {
   id: string;
+  shopifyProductId?: string | null;
   collectionId?: string;
   slug: string;
   name: string;
@@ -90,7 +92,7 @@ type StoreSettings = {
   shopifyStoreDomain?: string | null;
 };
 
-type Snapshot = { settings: StoreSettings; collections: Collection[]; products: Product[]; campaigns: Campaign[] };
+type Snapshot = { settings: StoreSettings; collections: Collection[]; products: Product[]; campaigns: Campaign[]; catalogSource?: "managed" | "fallback" };
 type CartLine = { product: Product; variant: Variant; quantity: number };
 
 const CATEGORY_LABEL: Record<Product["category"], string> = {
@@ -371,8 +373,8 @@ export default function Storefront() {
   const [cartOpen, setCartOpen] = useState(false);
   if (snapshotQuery.isLoading || !snapshotQuery.data) return <StoreLoading />;
   const snapshot = snapshotQuery.data as Snapshot;
-  const shopifyMode = Boolean(shopifyProductsQuery.data?.length);
-  const products = shopifyMode ? shopifyProductsQuery.data!.map(normalizeShopifyProduct) : snapshot.products;
+  const products = snapshot.catalogSource === "managed" ? snapshot.products : shopifyProductsQuery.data?.length ? shopifyProductsQuery.data.map(normalizeShopifyProduct) : snapshot.products;
+  const shopifyMode = products.some(product => product.source === "shopify");
   const updateQuantity = (variantId: string, quantity: number) => setCart(lines => quantity <= 0 ? lines.filter(line => line.variant.id !== variantId) : lines.map(line => line.variant.id === variantId ? { ...line, quantity } : line));
   const addToCart = (product: Product, variant: Variant) => { if (product.source === "shopify") { void shopifyCart.addItem(variant.id).then(() => toast.success(`تمت إضافة ${product.name} للسلة.`)).catch(error => toast.error(error instanceof Error ? error.message : "تعذر إضافة المنتج للسلة.")); return; } setCart(lines => { const existing = lines.find(line => line.variant.id === variant.id); if (existing) return lines.map(line => line.variant.id === variant.id ? { ...line, quantity: Math.min(line.quantity + 1, variant.stockQuantity) } : line); return [...lines, { product, variant, quantity: 1 }]; }); setCartOpen(true); };
   const checkout = () => { if (snapshot.settings.shopifyConnectionStatus !== "connected") { toast.info("ربط Shopify هو الخطوة القادمة لإتاحة الدفع الحقيقي. السلة جاهزة للاتصال عند إضافة المتجر."); return; } window.location.assign(`https://${snapshot.settings.shopifyStoreDomain ?? ""}`); };

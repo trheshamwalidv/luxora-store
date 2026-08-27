@@ -15,6 +15,13 @@
       "when": 1787807723337,
       "tag": "0001_outstanding_mojo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1787847008893,
+      "tag": "0002_spicy_shotgun",
+      "breakpoints": true
     }
   ]
 }

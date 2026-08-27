@@ -1,5 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
 import { campaigns, collections, productImages, products, productVariants } from "../drizzle/schema";
+import { listProducts } from "./_core/shopify";
 import {
   DEFAULT_CAMPAIGNS,
   DEFAULT_COLLECTIONS,
@@ -23,23 +24,22 @@ export async function bootstrapCatalogDefaults() {
   const db = await getDb();
   if (!db) return { created: false, reason: "database_unavailable" as const };
   const [existingProduct] = await db.select({ id: products.id }).from(products).limit(1);
-  if (existingProduct) return { created: false, reason: "catalog_not_empty" as const };
-
   await saveStorefrontSettings({});
-  await db.insert(collections).values(DEFAULT_COLLECTIONS.map((collection, index) => ({
-    slug: collection.slug,
-    title: collection.title,
-    kicker: collection.kicker ?? null,
-    description: collection.description,
-    imageUrl: collection.imageUrl ?? null,
-    category: collection.category,
-    sortOrder: index,
-    isPublished: true,
-  })));
+  const [existingCollection] = await db.select({ id: collections.id }).from(collections).limit(1);
+  if (!existingCollection) await db.insert(collections).values(DEFAULT_COLLECTIONS.map((collection, index) => ({
+      slug: collection.slug,
+      title: collection.title,
+      kicker: collection.kicker ?? null,
+      description: collection.description,
+      imageUrl: collection.imageUrl ?? null,
+      category: collection.category,
+      sortOrder: index,
+      isPublished: true,
+    })));
   const storedCollections = await db.select().from(collections);
   const collectionIds = new Map(storedCollections.map(collection => [collection.slug, collection.id]));
 
-  for (const product of DEFAULT_PRODUCTS) {
+  if (!existingProduct) for (const product of DEFAULT_PRODUCTS) {
     const [created] = await db.insert(products).values({
       collectionId: DEFAULT_COLLECTIONS.find(collection => collection.id === product.collectionId)
         ? collectionIds.get(DEFAULT_COLLECTIONS.find(collection => collection.id === product.collectionId)?.slug ?? "") ?? null
@@ -76,18 +76,77 @@ export async function bootstrapCatalogDefaults() {
     })));
   }
 
-  await db.insert(campaigns).values(DEFAULT_CAMPAIGNS.map((campaign, index) => ({
-    slug: campaign.slug,
-    type: campaign.type,
-    title: campaign.title,
-    kicker: campaign.kicker ?? null,
-    description: campaign.description,
-    imageUrl: campaign.imageUrl ?? null,
-    ctaLabel: campaign.ctaLabel,
-    isPublished: true,
-    sortOrder: index,
-  })));
-  return { created: true, reason: "created" as const };
+  const [existingCampaign] = await db.select({ id: campaigns.id }).from(campaigns).limit(1);
+  if (!existingCampaign) await db.insert(campaigns).values(DEFAULT_CAMPAIGNS.map((campaign, index) => ({
+      slug: campaign.slug,
+      type: campaign.type,
+      title: campaign.title,
+      kicker: campaign.kicker ?? null,
+      description: campaign.description,
+      imageUrl: campaign.imageUrl ?? null,
+      ctaLabel: campaign.ctaLabel,
+      isPublished: true,
+      sortOrder: index,
+    })));
+  return { created: !existingProduct || !existingCollection || !existingCampaign, reason: "created" as const };
+}
+
+function categoryFromShopifyTags(tags: string[]): "sneakers" | "gym" | "streetwear" {
+  if (tags.some(tag => tag.toLowerCase() === "sneakers")) return "sneakers";
+  if (tags.some(tag => ["gym", "training"].includes(tag.toLowerCase()))) return "gym";
+  return "streetwear";
+}
+
+/** استيراد صريح عند طلب المدير؛ يقرأ Shopify فقط ثم يحفظ طبقة العرض المحلية القابلة للتعديل. */
+export async function importShopifyCatalog() {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة حاليًا.");
+  const remoteProducts = await listProducts({ first: 24 });
+  let created = 0;
+  let skipped = 0;
+
+  for (const remote of remoteProducts) {
+    const firstVariant = remote.variants[0];
+    if (!firstVariant) continue;
+    const values = {
+      shopifyProductId: remote.id,
+      slug: remote.handle,
+      name: remote.title.replace(/^LUXORA\s+/i, ""),
+      subtitle: remote.productType || null,
+      description: remote.description || "تفاصيل المنتج تُدار من لوحة التحكم.",
+      category: categoryFromShopifyTags(remote.tags),
+      gender: "unisex" as const,
+      priceCents: Math.round(Number(remote.priceRange.min.amount) * 100),
+      compareAtCents: firstVariant.compareAtPrice ? Math.round(Number(firstVariant.compareAtPrice.amount) * 100) : null,
+      badge: remote.tags.some(tag => tag.toLowerCase() === "drop-01") ? "DROP 01" : null,
+      material: null,
+      status: "published" as const,
+      isFeatured: true,
+    };
+    const [existing] = await db.select({ id: products.id }).from(products).where(eq(products.shopifyProductId, remote.id)).limit(1);
+    if (existing) {
+      skipped += 1;
+      continue;
+    }
+    const [inserted] = await db.insert(products).values(values).$returningId();
+    const productId = inserted?.id ?? 0;
+    created += 1;
+    if (!productId) continue;
+    if (remote.images.length) await db.insert(productImages).values(remote.images.map((image, index) => ({ productId, imageUrl: image.url, altText: image.altText ?? remote.title, sortOrder: index })));
+    await db.insert(productVariants).values(remote.variants.map((variant, index) => ({
+      productId,
+      shopifyVariantId: variant.id,
+      sku: `SHOPIFY-${remote.handle.slice(0, 42).toUpperCase()}-${index + 1}`,
+      colorName: variant.selectedOptions.find(option => option.name.toLowerCase() === "color")?.value ?? "LUXORA",
+      colorHex: "#353535",
+      size: variant.selectedOptions.find(option => option.name.toLowerCase() === "size")?.value ?? (variant.title === "Default Title" ? "One Size" : variant.title),
+      stockQuantity: variant.availableForSale ? 1 : 0,
+      priceCents: Math.round(Number(variant.price.amount) * 100),
+      isAvailable: variant.availableForSale,
+    })));
+  }
+  await bootstrapCatalogDefaults();
+  return { created, skipped, total: remoteProducts.length };
 }
 
 export async function createCatalogProduct(input: EditableProduct) {
@@ -166,6 +225,7 @@ export async function replaceCatalogVariants(productId: number, variants: Storef
   await db.delete(productVariants).where(eq(productVariants.productId, productId));
   await db.insert(productVariants).values(variants.map(variant => ({
     productId,
+    shopifyVariantId: variant.shopifyVariantId ?? null,
     sku: variant.sku,
     colorName: variant.colorName,
     colorHex: variant.colorHex,
