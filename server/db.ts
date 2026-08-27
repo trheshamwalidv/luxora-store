@@ -221,12 +221,23 @@ export async function getPublishedProducts(): Promise<StorefrontProduct[]> {
 }
 
 export async function getStorefrontSnapshot() {
-  const db = await getDb();
-  const [settings, collectionList, productList, campaignList, managedRows] = await Promise.all([
-    getStorefrontSettings(), getPublishedCollections(), getPublishedProducts(), getPublishedCampaigns(),
-    db ? db.select({ id: products.id }).from(products).limit(1) : Promise.resolve([]),
-  ]);
-  return { settings, collections: collectionList, products: productList, campaigns: campaignList, catalogSource: managedRows.length ? "managed" : "fallback" as const };
+  try {
+    const db = await getDb();
+    const [settings, collectionList, productList, campaignList, managedRows] = await Promise.all([
+      getStorefrontSettings(), getPublishedCollections(), getPublishedProducts(), getPublishedCampaigns(),
+      db ? db.select({ id: products.id }).from(products).limit(1) : Promise.resolve([]),
+    ]);
+    return { settings, collections: collectionList, products: productList, campaigns: campaignList, catalogSource: managedRows.length ? "managed" : "fallback" as const };
+  } catch (error) {
+    console.error("[Catalog] Failed to load managed storefront; using defaults:", error);
+    return {
+      settings: DEFAULT_SETTINGS,
+      collections: DEFAULT_COLLECTIONS,
+      products: DEFAULT_PRODUCTS,
+      campaigns: DEFAULT_CAMPAIGNS,
+      catalogSource: "fallback" as const,
+    };
+  }
 }
 
 export async function getAdminOverview() {
