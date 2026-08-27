@@ -1,9 +1,12 @@
-import { createApp } from "../../server/app.ts";
+import { createRequire } from "node:module";
 
 
 
-// Vercel routes every /api/trpc/* request to this API function. The Express
+const require = createRequire(import.meta.url);
 
-// application keeps the existing typed tRPC contract unchanged.
+const app = require("./_handler.cjs").default;
 
-export default createApp();
+
+
+export default app;
+
