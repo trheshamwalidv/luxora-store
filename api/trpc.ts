@@ -1,9 +1,12 @@
-import { createApp } from "../server/app.ts";
+import { createRequire } from "node:module";
 
 
 
-// Handles the root batch endpoint `/api/trpc`; nested procedures are handled
+const require = createRequire(import.meta.url);
 
-// by `api/trpc/[...trpc].ts`.
+const app = require("./trpc/_handler.cjs").default;
 
-export default createApp();
+
+
+export default app;
+
