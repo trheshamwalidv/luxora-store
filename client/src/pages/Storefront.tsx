@@ -107,7 +107,7 @@ const CATEGORY_EN: Record<Product["category"], string> = {
   streetwear: "Streetwear",
 };
 
-const fallbackHero = "/manus-storage/luxora-hero-performance_cee8b63e.jpg";
+const fallbackHero = "https://res.cloudinary.com/dbt9psvo/image/upload/luxora-hero-performance_cee8b63e";
 
 function price(value: number) {
   return `${new Intl.NumberFormat("ar-EG").format(Math.round(value / 100))} ج.م`;
