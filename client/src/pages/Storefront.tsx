@@ -366,7 +366,11 @@ function StoreLoading() { return <main className="grid min-h-screen place-items-
 
 export default function Storefront() {
   const snapshotQuery = trpc.catalog.snapshot.useQuery();
-  const shopifyProductsQuery = trpc.commerce.products.list.useQuery({ first: 24 }, { retry: false });
+  const shopifyEnabled = snapshotQuery.data?.settings.shopifyConnectionStatus === "connected";
+  const shopifyProductsQuery = trpc.commerce.products.list.useQuery(
+    { first: 24 },
+    { retry: false, enabled: shopifyEnabled }
+  );
   const shopifyCart = useCart();
   const [location] = useLocation();
   const [cart, setCart] = useState<CartLine[]>([]);
