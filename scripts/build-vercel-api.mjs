@@ -6,13 +6,13 @@ await build({
   
   entryPoints: ["api/trpc/_entry.ts"],
   
-  outfile: "api/trpc/_handler.cjs",
+  outfile: "api/trpc/_handler.mjs",
   
   platform: "node",
   
   bundle: true,
   
-  format: "cjs",
+  format: "esm",
   
   target: "node22",
   
