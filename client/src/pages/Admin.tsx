@@ -13,7 +13,7 @@ type CollectionRow = { id: string; title: string; slug: string; description: str
 type CampaignRow = { id: string; title: string; slug: string; description: string; type: "drop" | "lookbook" | "offer"; imageUrl?: string | null; kicker?: string | null; ctaLabel: string; };
 
 const EMPTY_SETTINGS: SettingForm = { brandName: "LUXORA", wordmark: "LX", tagline: "Streetwear / Performance", description: "", primaryColor: "#D9FF2F", surfaceColor: "#101010", heroTitle: "MOVE DIFFERENT.", heroSubtitle: "", heroImageUrl: "", heroCtaLabel: "تسوّق الإصدار", announcementText: "" };
-const demoImage = "/manus-storage/luxora-product-streetwear_37edd00f.jpg";
+const demoImage = "https://res.cloudinary.com/dbt9psvo/image/upload/luxora-product-streetwear_37edd00f";
 
 function pounds(cents: number) { return new Intl.NumberFormat("ar-EG").format(Math.round(cents / 100)); }
 
@@ -62,7 +62,7 @@ function CloudinaryImageUpload({ onUploaded }: { onUploaded: (url: string) => vo
       const body = new FormData();
       body.append("file", file);
       body.append("upload_preset", config.uploadPreset);
-      body.append("folder", "luxora");
+      body.append("folder", "LUXORA");
       const response = await fetch(`https://api.cloudinary.com/v1_1/${config.cloudName}/image/upload`, { method: "POST", body });
       const result = await response.json() as { secure_url?: string; error?: { message?: string } };
       if (!response.ok || !result.secure_url) throw new Error(result.error?.message || "تعذر رفع الصورة.");
