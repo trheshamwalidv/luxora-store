@@ -19,6 +19,8 @@ import {
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import type { Cart, Product as ShopifyProduct } from "@shared/commerce/types";
+import { useCart } from "@/contexts/CartContext";
 
 type Variant = {
   id: string;
@@ -44,6 +46,7 @@ type Product = {
   badge?: string | null;
   material?: string | null;
   isFeatured: boolean;
+  source?: "local" | "shopify";
   images: { id: string; url: string; alt: string }[];
   variants: Variant[];
 };
@@ -106,6 +109,38 @@ const fallbackHero = "/manus-storage/luxora-hero-performance_cee8b63e.jpg";
 
 function price(value: number) {
   return `${new Intl.NumberFormat("ar-EG").format(Math.round(value / 100))} ج.م`;
+}
+
+function money(value: { amount: string; currencyCode: string }) {
+  return new Intl.NumberFormat("ar-EG", { style: "currency", currency: value.currencyCode, maximumFractionDigits: 0 }).format(Number(value.amount));
+}
+
+function normalizeShopifyProduct(item: ShopifyProduct): Product {
+  const category = item.tags.includes("sneakers") ? "sneakers" : item.tags.includes("gym") || item.tags.includes("training") ? "gym" : "streetwear";
+  return {
+    id: item.id,
+    slug: item.handle,
+    name: item.title.replace(/^LUXORA\s+/i, ""),
+    subtitle: item.productType ?? undefined,
+    description: item.description,
+    category,
+    gender: "unisex",
+    priceCents: Math.round(Number(item.priceRange.min.amount) * 100),
+    compareAtCents: item.variants[0]?.compareAtPrice ? Math.round(Number(item.variants[0].compareAtPrice.amount) * 100) : null,
+    badge: item.tags.includes("drop-01") ? "DROP 01" : null,
+    isFeatured: true,
+    source: "shopify",
+    images: item.images.map((image, index) => ({ id: `${item.id}-image-${index}`, url: image.url, alt: image.altText ?? item.title })),
+    variants: item.variants.map((variant, index) => ({
+      id: variant.id,
+      sku: variant.id,
+      colorName: variant.selectedOptions.find(option => option.name.toLowerCase() === "color")?.value ?? "LUXORA",
+      colorHex: "#353535",
+      size: variant.selectedOptions.find(option => option.name.toLowerCase() === "size")?.value ?? (variant.title === "Default Title" ? "One Size" : variant.title),
+      stockQuantity: 99,
+      isAvailable: variant.availableForSale,
+    })),
+  };
 }
 
 function getMainImage(product: Product) {
@@ -200,9 +235,9 @@ function ProductCard({ product, minimal = false }: { product: Product; minimal?:
   );
 }
 
-function HomeView({ snapshot }: { snapshot: Snapshot }) {
+function HomeView({ snapshot, products }: { snapshot: Snapshot; products: Product[] }) {
   const [, setLocation] = useLocation();
-  const featured = snapshot.products.filter(product => product.isFeatured).slice(0, 4);
+  const featured = products.filter(product => product.isFeatured).slice(0, 4);
   const campaigns = snapshot.campaigns;
   return (
     <main>
@@ -238,7 +273,7 @@ function HomeView({ snapshot }: { snapshot: Snapshot }) {
   );
 }
 
-function ShopView({ snapshot, defaultCategory }: { snapshot: Snapshot; defaultCategory?: Product["category"] }) {
+function ShopView({ snapshot, products, defaultCategory }: { snapshot: Snapshot; products: Product[]; defaultCategory?: Product["category"] }) {
   const [, setLocation] = useLocation();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<Product["category"] | "all">(defaultCategory ?? "all");
@@ -246,15 +281,15 @@ function ShopView({ snapshot, defaultCategory }: { snapshot: Snapshot; defaultCa
   const [color, setColor] = useState("all");
   const [maxPrice, setMaxPrice] = useState(350000);
   const [mobileFilters, setMobileFilters] = useState(false);
-  const sizes = Array.from(new Set(snapshot.products.flatMap(product => product.variants.map(variant => variant.size))));
-  const colors = Array.from(new Set(snapshot.products.flatMap(product => product.variants.map(variant => variant.colorName))));
-  const filtered = useMemo(() => snapshot.products.filter(product => {
+  const sizes = Array.from(new Set(products.flatMap(product => product.variants.map(variant => variant.size))));
+  const colors = Array.from(new Set(products.flatMap(product => product.variants.map(variant => variant.colorName))));
+  const filtered = useMemo(() => products.filter(product => {
     const matchesQuery = [product.name, product.subtitle, product.description].filter(Boolean).join(" ").toLowerCase().includes(query.toLowerCase());
     const matchesCategory = category === "all" || product.category === category;
     const matchesSize = size === "all" || product.variants.some(variant => variant.size === size && variant.isAvailable);
     const matchesColor = color === "all" || product.variants.some(variant => variant.colorName === color && variant.isAvailable);
     return matchesQuery && matchesCategory && matchesSize && matchesColor && product.priceCents <= maxPrice;
-  }), [snapshot.products, query, category, size, color, maxPrice]);
+  }), [products, query, category, size, color, maxPrice]);
   const reset = () => { setQuery(""); setCategory(defaultCategory ?? "all"); setSize("all"); setColor("all"); setMaxPrice(350000); };
   return <main className="min-h-screen bg-[#111] pb-20"><div className="container py-10 sm:py-16"><div className="border-b border-white/10 pb-7 sm:pb-10"><p className="text-[10px] font-extrabold tracking-[0.15em] text-[var(--lux-acid)]">THE STORE / EDIT 01</p><div className="mt-3 flex flex-wrap items-end justify-between gap-4"><h1 className="font-display text-5xl font-black tracking-[-0.065em] text-white sm:text-7xl">المتجر.</h1><span className="text-xs font-bold text-white/45">{filtered.length} قطع متاحة</span></div></div>
     <div className="mt-6 flex gap-2 overflow-x-auto pb-1 sm:hidden"><button onClick={() => setMobileFilters(!mobileFilters)} className="flex h-11 shrink-0 items-center gap-2 border border-white/20 px-4 text-xs font-bold text-white"><SlidersHorizontal className="h-4 w-4" />فلترة</button>{(["all", "sneakers", "gym", "streetwear"] as const).map(item => <button key={item} onClick={() => setCategory(item)} className={`h-11 shrink-0 px-4 text-xs font-bold ${category === item ? "bg-[var(--lux-acid)] text-black" : "border border-white/15 text-white"}`}>{item === "all" ? "الكل" : CATEGORY_LABEL[item]}</button>)}</div>
@@ -266,9 +301,9 @@ function ShopView({ snapshot, defaultCategory }: { snapshot: Snapshot; defaultCa
 function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) { return <div className="border-b border-white/10 py-5"><p className="mb-3 text-[10px] font-extrabold tracking-[0.13em] text-white/45">{label}</p><div className="space-y-1">{children}</div></div>; }
 function FilterCheck({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) { return <button onClick={onClick} className="flex w-full items-center justify-between py-1.5 text-right text-xs text-white/75"><span>{label}</span><span className={`grid h-4 w-4 place-items-center border ${active ? "border-[var(--lux-acid)] bg-[var(--lux-acid)] text-black" : "border-white/25"}`}>{active ? <Check className="h-3 w-3" /> : null}</span></button>; }
 
-function ProductView({ snapshot, slug, addToCart }: { snapshot: Snapshot; slug: string; addToCart: (product: Product, variant: Variant) => void }) {
+function ProductView({ products, slug, addToCart }: { products: Product[]; slug: string; addToCart: (product: Product, variant: Variant) => void }) {
   const [, setLocation] = useLocation();
-  const product = snapshot.products.find(item => item.slug === slug);
+  const product = products.find(item => item.slug === slug);
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedColor, setSelectedColor] = useState(product?.variants.find(variant => variant.isAvailable)?.colorName ?? "");
   const [selectedSize, setSelectedSize] = useState("");
@@ -281,7 +316,7 @@ function ProductView({ snapshot, slug, addToCart }: { snapshot: Snapshot; slug: 
   const add = () => { if (!activeVariant || !activeVariant.isAvailable) { toast.error("اختار مقاس متاح علشان تضيفه للسلة."); return; } addToCart(product, activeVariant); toast.success(`تمت إضافة ${product.name} للسلة.`); };
   return <main className="min-h-screen bg-[#111] pb-20"><div className="container py-5 sm:py-8"><button onClick={() => setLocation(`/collections/${product.category}`)} className="mb-5 flex items-center gap-2 text-xs font-bold text-white/55 hover:text-white"><ArrowRightIcon /><span>عودة إلى {CATEGORY_LABEL[product.category]}</span></button><div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(360px,.85fr)] lg:gap-14"><div><div className="relative aspect-[4/5] overflow-hidden bg-[#272727]"><img src={product.images[selectedImage]?.url ?? getMainImage(product)} alt={product.images[selectedImage]?.alt ?? product.name} className="h-full w-full object-cover" />{product.badge ? <span className="absolute right-4 top-4 bg-[var(--lux-acid)] px-3 py-1.5 text-[10px] font-black tracking-[0.1em] text-black">{product.badge}</span> : null}</div>{product.images.length > 1 ? <div className="mt-3 flex gap-2">{product.images.map((image, index) => <button key={image.id} onClick={() => setSelectedImage(index)} className={`h-20 w-16 overflow-hidden border ${selectedImage === index ? "border-[var(--lux-acid)]" : "border-white/15"}`}><img src={image.url} alt="" className="h-full w-full object-cover" /></button>)}</div> : null}</div>
     <div className="lg:pt-7"><p className="text-[10px] font-extrabold tracking-[0.15em] text-[var(--lux-acid)]">{CATEGORY_EN[product.category]} / {product.gender.toUpperCase()}</p><h1 className="mt-3 font-display text-5xl font-black leading-none tracking-[-0.06em] text-white sm:text-6xl">{product.name}</h1><p className="mt-3 text-sm text-white/55">{product.subtitle}</p><div className="mt-6 flex items-center gap-3 border-y border-white/10 py-5"><span className="text-2xl font-black text-white">{price(product.priceCents)}</span>{product.compareAtCents ? <span className="text-sm text-white/35 line-through">{price(product.compareAtCents)}</span> : null}</div><p className="mt-6 text-sm leading-7 text-white/70">{product.description}</p>{product.material ? <p className="mt-4 text-xs font-bold tracking-wide text-white/45">MATERIAL / {product.material}</p> : null}
-      <div className="mt-8 border-t border-white/10 pt-6"><div className="flex items-center justify-between"><p className="text-xs font-black text-white">اللون <span className="mr-1 text-white/45">/ {selectedColor}</span></p></div><div className="mt-3 flex flex-wrap gap-2">{colors.map(color => { const variant = product.variants.find(item => item.colorName === color); return <button key={color} onClick={() => chooseColor(color)} aria-label={`اختيار اللون ${color}`} className={`grid h-10 w-10 place-items-center rounded-full border-2 ${selectedColor === color ? "border-[var(--lux-acid)]" : "border-transparent"}`}><span className="h-7 w-7 rounded-full border border-white/30" style={{ background: variant?.colorHex }} /></button>; })}</div></div><div className="mt-6 border-t border-white/10 pt-6"><div className="flex items-center justify-between"><p className="text-xs font-black text-white">المقاس</p><button className="text-[10px] font-bold text-white/45 underline">دليل المقاسات</button></div><div className="mt-3 grid grid-cols-4 gap-2">{sizes.map(size => { const variant = product.variants.find(item => item.colorName === selectedColor && item.size === size); const unavailable = !variant?.isAvailable; return <button key={size} disabled={unavailable} onClick={() => setSelectedSize(size)} className={`h-12 border text-sm font-bold transition ${selectedSize === size ? "border-[var(--lux-acid)] bg-[var(--lux-acid)] text-black" : unavailable ? "cursor-not-allowed border-white/10 text-white/20 line-through" : "border-white/25 text-white hover:border-white"}`}>{size}</button>; })}</div><p className={`mt-3 text-xs font-bold ${activeVariant?.isAvailable ? activeVariant.stockQuantity <= 3 ? "text-amber-300" : "text-emerald-300" : "text-white/45"}`}>{activeVariant ? activeVariant.isAvailable ? activeVariant.stockQuantity <= 3 ? `متبقي ${activeVariant.stockQuantity} فقط من هذا المقاس` : `متاح الآن — ${activeVariant.stockQuantity} قطع لهذا المقاس` : "هذا المقاس نفد حاليًا" : `متاح ${availableStock} قطعة عبر المقاسات — اختر مقاسًا`}</p></div><button onClick={add} className="mt-7 flex h-14 w-full items-center justify-center gap-3 bg-[var(--lux-acid)] text-sm font-black text-black transition hover:bg-white active:scale-[0.985]">إضافة للسلة <ShoppingBag className="h-4 w-4" /></button><div className="mt-4 grid grid-cols-3 border-t border-white/10 pt-5 text-center text-[10px] font-bold text-white/45"><span>تغليف نظيف</span><span className="border-x border-white/10">توصيل سريع</span><span>دفع آمن قريبًا</span></div></div>
+      <div className="mt-8 border-t border-white/10 pt-6"><div className="flex items-center justify-between"><p className="text-xs font-black text-white">اللون <span className="mr-1 text-white/45">/ {selectedColor}</span></p></div><div className="mt-3 flex flex-wrap gap-2">{colors.map(color => { const variant = product.variants.find(item => item.colorName === color); return <button key={color} onClick={() => chooseColor(color)} aria-label={`اختيار اللون ${color}`} className={`grid h-10 w-10 place-items-center rounded-full border-2 ${selectedColor === color ? "border-[var(--lux-acid)]" : "border-transparent"}`}><span className="h-7 w-7 rounded-full border border-white/30" style={{ background: variant?.colorHex }} /></button>; })}</div></div><div className="mt-6 border-t border-white/10 pt-6"><div className="flex items-center justify-between"><p className="text-xs font-black text-white">المقاس</p><button className="text-[10px] font-bold text-white/45 underline">دليل المقاسات</button></div><div className="mt-3 grid grid-cols-4 gap-2">{sizes.map(size => { const variant = product.variants.find(item => item.colorName === selectedColor && item.size === size); const unavailable = !variant?.isAvailable; return <button key={size} disabled={unavailable} onClick={() => setSelectedSize(size)} className={`h-12 border text-sm font-bold transition ${selectedSize === size ? "border-[var(--lux-acid)] bg-[var(--lux-acid)] text-black" : unavailable ? "cursor-not-allowed border-white/10 text-white/20 line-through" : "border-white/25 text-white hover:border-white"}`}>{size}</button>; })}</div><p className={`mt-3 text-xs font-bold ${activeVariant?.isAvailable ? "text-emerald-300" : "text-white/45"}`}>{activeVariant ? activeVariant.isAvailable ? product.source === "shopify" ? "متاح الآن عبر المتجر الرسمي" : activeVariant.stockQuantity <= 3 ? `متبقي ${activeVariant.stockQuantity} فقط من هذا المقاس` : `متاح الآن — ${activeVariant.stockQuantity} قطع لهذا المقاس` : "هذا المقاس نفد حاليًا" : product.source === "shopify" ? "اختر المقاس المتاح لإضافته للسلة" : `متاح ${availableStock} قطعة عبر المقاسات — اختر مقاسًا`}</p></div><button onClick={add} className="mt-7 flex h-14 w-full items-center justify-center gap-3 bg-[var(--lux-acid)] text-sm font-black text-black transition hover:bg-white active:scale-[0.985]">إضافة للسلة <ShoppingBag className="h-4 w-4" /></button><div className="mt-4 grid grid-cols-3 border-t border-white/10 pt-5 text-center text-[10px] font-bold text-white/45"><span>تغليف نظيف</span><span className="border-x border-white/10">توصيل سريع</span><span>دفع آمن</span></div></div>
   </div></div></main>;
 }
 
@@ -312,31 +347,47 @@ function CartPanel({ settings, cart, open, onClose, updateQuantity, remove, chec
   </div>;
 }
 
+function ShopifyCartPanel({ cart, open, loading, onClose, updateQuantity, remove, checkout }: { cart: Cart | null; open: boolean; loading: boolean; onClose: () => void; updateQuantity: (lineId: string, quantity: number) => Promise<void>; remove: (lineId: string) => Promise<void>; checkout: () => void }) {
+  if (!open) return null;
+  return <div className="fixed inset-0 z-[80] bg-black/65 backdrop-blur-sm" onClick={onClose}>
+    <aside className="mr-auto flex h-full w-full max-w-md flex-col bg-[#151515] text-white shadow-2xl" onClick={event => event.stopPropagation()}>
+      <div className="flex items-center justify-between border-b border-white/10 p-5"><div><p className="font-display text-2xl font-black">سلة الشراء</p><p className="mt-1 text-[10px] font-bold tracking-wider text-white/45">{cart?.itemCount ?? 0} منتجات مختارة</p></div><button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full border border-white/15"><X className="h-4 w-4" /></button></div>
+      <div className="flex-1 overflow-y-auto p-5">{cart?.items.length ? <div className="space-y-4">{cart.items.map(item => <div key={item.lineId} className="flex gap-3 border-b border-white/10 pb-4"><img src={item.image?.url ?? fallbackHero} alt={item.image?.altText ?? item.productTitle} className="h-24 w-20 object-cover" /><div className="min-w-0 flex-1"><div className="flex justify-between gap-2"><div><p className="text-sm font-bold text-white">{item.productTitle.replace(/^LUXORA\s+/i, "")}</p>{item.variantTitle !== "Default Title" ? <p className="mt-1 text-[10px] text-white/45">{item.variantTitle}</p> : null}</div><button onClick={() => void remove(item.lineId)} disabled={loading} aria-label={`حذف ${item.productTitle}`} className="h-7 text-white/45 hover:text-[var(--lux-acid)]"><Trash2 className="h-4 w-4" /></button></div><div className="mt-4 flex items-center justify-between"><p className="text-xs font-black">{money(item.lineTotal)}</p><div className="flex items-center border border-white/20"><button disabled={loading} onClick={() => void updateQuantity(item.lineId, item.quantity - 1)} className="grid h-7 w-7 place-items-center disabled:text-white/25"><Minus className="h-3 w-3" /></button><span className="grid h-7 w-7 place-items-center text-xs font-bold">{item.quantity}</span><button disabled={loading} onClick={() => void updateQuantity(item.lineId, item.quantity + 1)} className="grid h-7 w-7 place-items-center disabled:text-white/25"><Plus className="h-3 w-3" /></button></div></div></div></div>)}</div> : <div className="grid h-full min-h-[300px] place-items-center text-center"><div><ShoppingBag className="mx-auto h-8 w-8 text-white/25" /><p className="mt-4 font-display text-2xl font-black">السلة فاضية.</p><p className="mt-2 text-xs leading-6 text-white/45">اختر قطعة من الإصدار الحالي وارجع هنا.</p><button onClick={onClose} className="mt-5 text-xs font-bold text-[var(--lux-acid)]">العودة للمتجر</button></div></div>}</div>
+      {cart?.items.length ? <div className="border-t border-white/10 p-5"><div className="mb-4 flex items-center justify-between"><span className="text-sm font-bold text-white/60">الإجمالي</span><strong className="text-xl font-black">{money(cart.total)}</strong></div><button onClick={checkout} disabled={loading} className="flex h-14 w-full items-center justify-center gap-3 bg-[var(--lux-acid)] text-sm font-black text-black disabled:opacity-60">إتمام الطلب بأمان <ArrowLeft className="h-4 w-4" /></button><p className="mt-3 text-center text-[10px] leading-5 text-white/40">سيتم فتح صفحة الدفع الآمنة الخاصة بالمتجر.</p></div> : null}
+    </aside>
+  </div>;
+}
+
 function NotFoundView() { return <main className="grid min-h-[70vh] place-items-center bg-[#111] px-5 text-center"><div><p className="text-[10px] font-black tracking-[0.15em] text-[var(--lux-acid)]">404 / LOST IN MOTION</p><h1 className="mt-3 font-display text-6xl font-black text-white">مش موجودة.</h1><Link href="/shop" className="mt-6 inline-flex h-12 items-center bg-[var(--lux-acid)] px-5 text-sm font-black text-black">العودة للمتجر</Link></div></main>; }
 
 function StoreLoading() { return <main className="grid min-h-screen place-items-center bg-[#111]"><div className="text-center"><span className="mx-auto block h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-[var(--lux-acid)]" /><p className="mt-4 text-[10px] font-bold tracking-[.15em] text-white/45">LOADING LUXORA</p></div></main>; }
 
 export default function Storefront() {
   const snapshotQuery = trpc.catalog.snapshot.useQuery();
+  const shopifyProductsQuery = trpc.commerce.products.list.useQuery({ first: 24 }, { retry: false });
+  const shopifyCart = useCart();
   const [location] = useLocation();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   if (snapshotQuery.isLoading || !snapshotQuery.data) return <StoreLoading />;
   const snapshot = snapshotQuery.data as Snapshot;
+  const shopifyMode = Boolean(shopifyProductsQuery.data?.length);
+  const products = shopifyMode ? shopifyProductsQuery.data!.map(normalizeShopifyProduct) : snapshot.products;
   const updateQuantity = (variantId: string, quantity: number) => setCart(lines => quantity <= 0 ? lines.filter(line => line.variant.id !== variantId) : lines.map(line => line.variant.id === variantId ? { ...line, quantity } : line));
-  const addToCart = (product: Product, variant: Variant) => { setCart(lines => { const existing = lines.find(line => line.variant.id === variant.id); if (existing) return lines.map(line => line.variant.id === variant.id ? { ...line, quantity: Math.min(line.quantity + 1, variant.stockQuantity) } : line); return [...lines, { product, variant, quantity: 1 }]; }); setCartOpen(true); };
+  const addToCart = (product: Product, variant: Variant) => { if (product.source === "shopify") { void shopifyCart.addItem(variant.id).then(() => toast.success(`تمت إضافة ${product.name} للسلة.`)).catch(error => toast.error(error instanceof Error ? error.message : "تعذر إضافة المنتج للسلة.")); return; } setCart(lines => { const existing = lines.find(line => line.variant.id === variant.id); if (existing) return lines.map(line => line.variant.id === variant.id ? { ...line, quantity: Math.min(line.quantity + 1, variant.stockQuantity) } : line); return [...lines, { product, variant, quantity: 1 }]; }); setCartOpen(true); };
   const checkout = () => { if (snapshot.settings.shopifyConnectionStatus !== "connected") { toast.info("ربط Shopify هو الخطوة القادمة لإتاحة الدفع الحقيقي. السلة جاهزة للاتصال عند إضافة المتجر."); return; } window.location.assign(`https://${snapshot.settings.shopifyStoreDomain ?? ""}`); };
   const params = new URLSearchParams(location.includes("?") ? location.split("?")[1] : "");
   const path = location.split("?")[0];
   let page: React.ReactNode;
-  if (path === "/") page = <HomeView snapshot={snapshot} />;
-  else if (path === "/shop") page = <ShopView snapshot={snapshot} />;
-  else if (path.startsWith("/collections/")) page = <ShopView snapshot={snapshot} defaultCategory={path.split("/").pop() as Product["category"]} />;
-  else if (path.startsWith("/product/")) page = <ProductView snapshot={snapshot} slug={decodeURIComponent(path.split("/").pop() ?? "")} addToCart={addToCart} />;
+  if (path === "/") page = <HomeView snapshot={snapshot} products={products} />;
+  else if (path === "/shop") page = <ShopView snapshot={snapshot} products={products} />;
+  else if (path.startsWith("/collections/")) page = <ShopView snapshot={snapshot} products={products} defaultCategory={path.split("/").pop() as Product["category"]} />;
+  else if (path.startsWith("/product/")) page = <ProductView products={products} slug={decodeURIComponent(path.split("/").pop() ?? "")} addToCart={addToCart} />;
   else if (path === "/drops") page = <CampaignView campaigns={snapshot.campaigns} type="drop" />;
   else if (path === "/lookbook") page = <CampaignView campaigns={snapshot.campaigns} type="lookbook" />;
   else if (path === "/offers") page = <CampaignView campaigns={snapshot.campaigns} type="offer" />;
   else page = <NotFoundView />;
-  const count = cart.reduce((sum, line) => sum + line.quantity, 0);
-  return <div dir="rtl" className="min-h-screen bg-[#111] text-white" style={{ "--lux-acid": snapshot.settings.primaryColor } as React.CSSProperties}><Header settings={snapshot.settings} cartCount={count} onCart={() => setCartOpen(true)} />{page}<footer className="border-t border-white/10 bg-[#0b0b0b] py-9"><div className="container flex flex-col justify-between gap-5 text-center sm:flex-row sm:text-right"><BrandMark settings={snapshot.settings} /><div className="text-xs leading-6 text-white/45"><p>{snapshot.settings.description}</p><p className="mt-2">© 2026 {snapshot.settings.brandName}. All rights reserved.</p></div></div></footer><CartPanel settings={snapshot.settings} cart={cart} open={cartOpen} onClose={() => setCartOpen(false)} updateQuantity={updateQuantity} remove={id => setCart(lines => lines.filter(line => line.variant.id !== id))} checkout={checkout} /></div>;
+  const count = shopifyMode ? shopifyCart.itemCount : cart.reduce((sum, line) => sum + line.quantity, 0);
+  const openCart = () => shopifyMode ? shopifyCart.openCart() : setCartOpen(true);
+  return <div dir="rtl" className="min-h-screen bg-[#111] text-white" style={{ "--lux-acid": snapshot.settings.primaryColor } as React.CSSProperties}><Header settings={snapshot.settings} cartCount={count} onCart={openCart} />{page}<footer className="border-t border-white/10 bg-[#0b0b0b] py-9"><div className="container flex flex-col justify-between gap-5 text-center sm:flex-row sm:text-right"><BrandMark settings={snapshot.settings} /><div className="text-xs leading-6 text-white/45"><p>{snapshot.settings.description}</p><p className="mt-2">© 2026 {snapshot.settings.brandName}. All rights reserved.</p></div></div></footer>{shopifyMode ? <ShopifyCartPanel cart={shopifyCart.cart} open={shopifyCart.isOpen} loading={shopifyCart.loading} onClose={shopifyCart.closeCart} updateQuantity={shopifyCart.updateQuantity} remove={shopifyCart.removeItem} checkout={shopifyCart.proceedToCheckout} /> : <CartPanel settings={snapshot.settings} cart={cart} open={cartOpen} onClose={() => setCartOpen(false)} updateQuantity={updateQuantity} remove={id => setCart(lines => lines.filter(line => line.variant.id !== id))} checkout={checkout} />}</div>;
 }
