@@ -69,11 +69,11 @@ export type StorefrontSettings = {
 };
 
 export const LUXORA_IMAGES = {
-  hero: "/manus-storage/luxora-hero-performance_cee8b63e.jpg",
-  sneaker: "/manus-storage/luxora-product-sneaker_8812d00d.jpg",
-  gym: "/manus-storage/luxora-product-gym_c49fbf10.jpg",
-  streetwear: "/manus-storage/luxora-product-streetwear_37edd00f.jpg",
-  lookbook: "/manus-storage/luxora-lookbook-night_8e397827.jpg",
+  hero: "/assets/luxora-hero-performance.webp",
+  sneaker: "/assets/luxora-product-sneaker.webp",
+  gym: "/assets/luxora-product-gym.webp",
+  streetwear: "/assets/luxora-product-streetwear.webp",
+  lookbook: "/assets/luxora-lookbook-night.webp",
 } as const;
 
 export const DEFAULT_SETTINGS: StorefrontSettings = {
