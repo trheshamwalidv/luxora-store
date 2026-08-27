@@ -1,6 +1,8 @@
 import { COOKIE_NAME } from "@shared/const";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { createOwnerSession, isStandaloneOwnerAuthEnabled, OWNER_SESSION_COOKIE, verifyOwnerPassword } from "./_core/ownerAuth";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, router } from "./_core/trpc";
 import { commerceRouter } from "./routers/commerce";
@@ -51,9 +53,23 @@ export const appRouter = router({
   commerce: commerceRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    mode: publicProcedure.query(() => ({ standalone: isStandaloneOwnerAuthEnabled() })),
+    ownerLogin: publicProcedure.input(z.object({ password: z.string().min(1) })).mutation(async ({ input, ctx }) => {
+      if (!isStandaloneOwnerAuthEnabled()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "تسجيل الدخول المستقل غير مهيأ بعد." });
+      }
+      if (!verifyOwnerPassword(input.password)) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "بيانات الدخول غير صحيحة." });
+      }
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      const session = await createOwnerSession();
+      ctx.res.cookie(OWNER_SESSION_COOKIE, session, { ...cookieOptions, maxAge: 1000 * 60 * 60 * 12 });
+      return { success: true } as const;
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      ctx.res.clearCookie(OWNER_SESSION_COOKIE, { ...cookieOptions, maxAge: -1 });
       return {
         success: true,
       } as const;
