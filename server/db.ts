@@ -309,6 +309,17 @@ export async function updateOrderStatus(id: number, status: "new" | "confirmed" 
   return row ?? null;
 }
 
+export async function deleteStoreOrder(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة حاليًا.");
+  await ensureOrderTables(db);
+  const [existing] = await db.select({ id: orders.id, orderNumber: orders.orderNumber }).from(orders).where(eq(orders.id, id)).limit(1);
+  if (!existing) throw new Error("الطلب غير موجود.");
+  await db.delete(orderItems).where(eq(orderItems.orderId, id));
+  await db.delete(orders).where(eq(orders.id, id));
+  return { success: true, orderNumber: existing.orderNumber } as const;
+}
+
 export async function getStorefrontSnapshot() {
   try {
     const db = await getDb();
