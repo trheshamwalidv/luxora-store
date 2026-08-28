@@ -337,7 +337,7 @@ function EmptyEditorial() { return <div className="grid min-h-80 place-items-cen
 
 function CartPanel({ settings, cart, open, onClose, updateQuantity, remove, clearCart }: { settings: StoreSettings; cart: CartLine[]; open: boolean; onClose: () => void; updateQuantity: (id: string, quantity: number) => void; remove: (id: string) => void; clearCart: () => void }) {
   const total = cart.reduce((sum, line) => sum + line.product.priceCents * line.quantity, 0);
-  const hasStockLimit = cart.some(line => line.quantity >= line.variant.stockQuantity);
+  const hasStockLimit = cart.some(line => line.quantity > line.variant.stockQuantity);
   const [orderOpen, setOrderOpen] = useState(false);
   const [customer, setCustomer] = useState({ name: "", phone: "", address: "", notes: "" });
   const createOrder = trpc.orders.create.useMutation({ onSuccess: result => { toast.success(`تم تسجيل الطلب ${result.orderNumber} بنجاح.`); setCustomer({ name: "", phone: "", address: "", notes: "" }); setOrderOpen(false); clearCart(); onClose(); }, onError: error => toast.error(error.message), });
