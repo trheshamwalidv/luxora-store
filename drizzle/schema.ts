@@ -141,9 +141,39 @@ export const campaignProducts = mysqlTable("campaign_products", {
   index("campaign_products_product_idx").on(table.productId),
 ]);
 
+
+export const orders = mysqlTable("orders", {
+  id: int("id").autoincrement().primaryKey(),
+  orderNumber: varchar("order_number", { length: 32 }).notNull().unique(),
+  customerName: varchar("customer_name", { length: 160 }).notNull(),
+  phone: varchar("phone", { length: 40 }).notNull(),
+  address: text("address").notNull(),
+  notes: text("notes"),
+  paymentMethod: mysqlEnum("payment_method", ["cod"]).notNull().default("cod"),
+  status: mysqlEnum("order_status", ["new", "confirmed", "preparing", "shipped", "completed", "cancelled"]).notNull().default("new"),
+  totalCents: int("total_cents").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, table => [index("orders_status_idx").on(table.status), index("orders_created_idx").on(table.createdAt)]);
+
+export const orderItems = mysqlTable("order_items", {
+  id: int("id").autoincrement().primaryKey(),
+  orderId: int("order_id").notNull(),
+  productId: varchar("product_id", { length: 180 }).notNull(),
+  productName: varchar("product_name", { length: 160 }).notNull(),
+  productSlug: varchar("product_slug", { length: 160 }).notNull(),
+  variantId: varchar("variant_id", { length: 180 }).notNull(),
+  variantLabel: varchar("variant_label", { length: 96 }).notNull(),
+  quantity: int("quantity").notNull(),
+  unitPriceCents: int("unit_price_cents").notNull(),
+  imageUrl: text("image_url"),
+}, table => [index("order_items_order_idx").on(table.orderId)]);
+
 export type StoreSettings = typeof storeSettings.$inferSelect;
 export type Collection = typeof collections.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type ProductVariant = typeof productVariants.$inferSelect;
 export type ProductImage = typeof productImages.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
+export type Order = typeof orders.$inferSelect;
+export type OrderItem = typeof orderItems.$inferSelect;
