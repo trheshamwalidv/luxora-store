@@ -18,7 +18,7 @@ import {
   saveCatalogCollection,
   updateCatalogProduct,
 } from "./catalogAdmin";
-import { createStoreOrder, getAdminOrders, getAdminOverview, getStorefrontSnapshot, saveStorefrontSettings, updateOrderStatus } from "./db";
+import { createStoreOrder, deleteStoreOrder, getAdminOrders, getAdminOverview, getStorefrontSnapshot, saveStorefrontSettings, updateOrderStatus } from "./db";
 
 const productInput = z.object({
   slug: z.string().min(3).max(160),
@@ -94,6 +94,7 @@ export const appRouter = router({
       id: z.number().int().positive(),
       status: z.enum(["new", "confirmed", "preparing", "shipped", "completed", "cancelled"]),
     })).mutation(({ input }) => updateOrderStatus(input.id, input.status)),
+    delete: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input }) => deleteStoreOrder(input.id)),
   }),
   catalog: router({
     snapshot: publicProcedure.query(() => getStorefrontSnapshot()),
