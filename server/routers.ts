@@ -18,7 +18,7 @@ import {
   saveCatalogCollection,
   updateCatalogProduct,
 } from "./catalogAdmin";
-import { getAdminOverview, getStorefrontSnapshot, saveStorefrontSettings } from "./db";
+import { createStoreOrder, getAdminOrders, getAdminOverview, getStorefrontSnapshot, saveStorefrontSettings, updateOrderStatus } from "./db";
 
 const productInput = z.object({
   slug: z.string().min(3).max(160),
@@ -34,6 +34,12 @@ const productInput = z.object({
   isFeatured: z.boolean(),
   imageUrl: z.string().url().optional().nullable(),
   collectionSlug: z.string().max(120).optional().nullable(),
+});
+
+const orderItemInput = z.object({
+  productId: z.string().min(1).max(180),
+  variantId: z.string().min(1).max(180),
+  quantity: z.number().int().min(1).max(20),
 });
 
 const variantInput = z.object({
@@ -74,6 +80,20 @@ export const appRouter = router({
         success: true,
       } as const;
     }),
+  }),
+  orders: router({
+    create: publicProcedure.input(z.object({
+      customerName: z.string().trim().min(2).max(160),
+      phone: z.string().trim().min(7).max(40),
+      address: z.string().trim().min(8).max(2000),
+      notes: z.string().trim().max(1000).optional().nullable(),
+      items: z.array(orderItemInput).min(1).max(30),
+    })).mutation(({ input }) => createStoreOrder(input)),
+    list: adminProcedure.query(() => getAdminOrders()),
+    updateStatus: adminProcedure.input(z.object({
+      id: z.number().int().positive(),
+      status: z.enum(["new", "confirmed", "preparing", "shipped", "completed", "cancelled"]),
+    })).mutation(({ input }) => updateOrderStatus(input.id, input.status)),
   }),
   catalog: router({
     snapshot: publicProcedure.query(() => getStorefrontSnapshot()),
