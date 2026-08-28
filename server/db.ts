@@ -1,5 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { asc, eq, inArray } from "drizzle-orm";import { drizzle } from "drizzle-orm/mysql2";import { createPool } from "mysql2";
 import {
   campaigns,
   collections,
@@ -28,7 +27,7 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const pool = createPool({ uri: process.env.DATABASE_URL, ssl: { minVersion: "TLSv1.2", rejectUnauthorized: true }, waitForConnections: true, connectionLimit: 2, queueLimit: 0 });_db = drizzle(pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
