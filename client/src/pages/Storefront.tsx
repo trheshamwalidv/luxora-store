@@ -381,7 +381,7 @@ export default function Storefront() {
     { retry: false, enabled: shopifyEnabled }
   );
   const shopifyCart = useCart();
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   if (snapshotQuery.isLoading || !snapshotQuery.data) return <StoreLoading />;
