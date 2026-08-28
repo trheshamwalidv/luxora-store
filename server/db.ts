@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";import { drizzle } from "drizzle-orm/mysql2";import { createPool } from "mysql2";
+import { asc, desc, eq, inArray, sql } from "drizzle-orm";import { drizzle } from "drizzle-orm/mysql2";import { createPool } from "mysql2";
 import {
   campaigns,
   collections,
@@ -8,6 +8,8 @@ import {
   productVariants,
   storeSettings,
   users,
+  orders,
+  orderItems,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import {
@@ -22,6 +24,52 @@ import {
 } from "./catalogDefaults";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let ordersReady: Promise<void> | null = null;
+
+type CreateOrderInput = {
+  customerName: string;
+  phone: string;
+  address: string;
+  notes?: string | null;
+  items: Array<{ productId: string; variantId: string; quantity: number }>;
+};
+
+async function ensureOrderTables(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (!ordersReady) {
+    ordersReady = db.execute(sql`CREATE TABLE IF NOT EXISTS orders (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      order_number VARCHAR(32) NOT NULL UNIQUE,
+      customer_name VARCHAR(160) NOT NULL,
+      phone VARCHAR(40) NOT NULL,
+      address TEXT NOT NULL,
+      notes TEXT NULL,
+      payment_method ENUM('cod') NOT NULL DEFAULT 'cod',
+      order_status ENUM('new','confirmed','preparing','shipped','completed','cancelled') NOT NULL DEFAULT 'new',
+      total_cents INT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX orders_status_idx (order_status),
+      INDEX orders_created_idx (created_at)
+    )`).then(() => db.execute(sql`CREATE TABLE IF NOT EXISTS order_items (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      order_id INT NOT NULL,
+      product_id VARCHAR(180) NOT NULL,
+      product_name VARCHAR(160) NOT NULL,
+      product_slug VARCHAR(160) NOT NULL,
+      variant_id VARCHAR(180) NOT NULL,
+      variant_label VARCHAR(96) NOT NULL,
+      quantity INT NOT NULL,
+      unit_price_cents INT NOT NULL,
+      image_url TEXT NULL,
+      INDEX order_items_order_idx (order_id)
+    )` )).then(() => undefined).catch(error => {
+      ordersReady = null;
+      throw error;
+    });
+  }
+  await ordersReady;
+}
+
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
@@ -217,6 +265,48 @@ export async function getPublishedProducts(): Promise<StorefrontProduct[]> {
       size: variant.size, stockQuantity: variant.stockQuantity, isAvailable: variant.isAvailable,
     })),
   }));
+}
+
+export async function createStoreOrder(input: CreateOrderInput) {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة حاليًا.");
+  await ensureOrderTables(db);
+  if (!input.items.length) throw new Error("السلة فارغة.");
+  const products = await getPublishedProducts();
+  const resolved = input.items.map(item => {
+    const product = products.find(candidate => candidate.id === item.productId);
+    const variant = product?.variants.find(candidate => candidate.id === item.variantId);
+    if (!product || !variant) throw new Error("أحد المنتجات لم يعد متاحًا.");
+    if (!variant.isAvailable || variant.stockQuantity < item.quantity) throw new Error("الكمية المتاحة من " + product.name + " غير كافية.");
+    return { item, product, variant };
+  });
+  const totalCents = resolved.reduce((sum, entry) => sum + entry.product.priceCents * entry.item.quantity, 0);
+  const orderNumber = "LX-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
+  const inserted = await db.insert(orders).values({ orderNumber, customerName: input.customerName.trim(), phone: input.phone.trim(), address: input.address.trim(), notes: input.notes?.trim() || null, paymentMethod: "cod", status: "new", totalCents }).$returningId();
+  const orderId = inserted[0]?.id;
+  if (!orderId) throw new Error("تعذر إنشاء رقم الطلب.");
+  await db.insert(orderItems).values(resolved.map(({ item, product, variant }) => ({ orderId, productId: product.id, productName: product.name, productSlug: product.slug, variantId: variant.id, variantLabel: variant.colorName + " / " + variant.size, quantity: item.quantity, unitPriceCents: product.priceCents, imageUrl: product.images[0]?.url ?? null })));
+  return { id: orderId, orderNumber, totalCents };
+}
+
+export async function getAdminOrders() {
+  const db = await getDb();
+  if (!db) return [];
+  await ensureOrderTables(db);
+  const rows = await db.select().from(orders).orderBy(desc(orders.createdAt));
+  if (!rows.length) return [];
+  const ids = rows.map(row => row.id);
+  const items = await db.select().from(orderItems).where(inArray(orderItems.orderId, ids));
+  return rows.map(row => ({ ...row, items: items.filter(item => item.orderId === row.id) }));
+}
+
+export async function updateOrderStatus(id: number, status: "new" | "confirmed" | "preparing" | "shipped" | "completed" | "cancelled") {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة حاليًا.");
+  await ensureOrderTables(db);
+  await db.update(orders).set({ status }).where(eq(orders.id, id));
+  const [row] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
+  return row ?? null;
 }
 
 export async function getStorefrontSnapshot() {
